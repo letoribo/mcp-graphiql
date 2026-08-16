@@ -1,0 +1,31 @@
+{
+  "name": "mcp-graphiql",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "electron:dev": "cross-env VITE_DEV_SERVER_URL=http://localhost:5173 concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\""
+  },
+  "dependencies": {
+    "@letoribo/mcp-graphql-enhanced": "^4.14.4",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "graphiql": "^5.2.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "concurrently": "^10.0.5",
+    "cross-env": "^10.1.0",
+    "electron": "^43.4.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4",
+    "wait-on": "^9.1.0"
+  }
+}

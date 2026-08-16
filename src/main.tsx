@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import "graphiql/graphiql.css"; // Импортируем первыми
+import "graphiql/graphiql.css";
 import "./App.css";
 import App from "./App.tsx";
 

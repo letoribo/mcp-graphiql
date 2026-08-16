@@ -16,7 +16,7 @@ function createWindow() {
     },
   });
 
-  // Функция прямой вставки текста в активное поле
+  // Direct text insertion into the active element
   const handlePaste = () => {
     const text = clipboard.readText();
     if (text) {
@@ -24,26 +24,26 @@ function createWindow() {
     }
   };
 
-  // Контекстное меню по правому клику
+  // Context menu on right-click
   win.webContents.on("context-menu", () => {
     const contextMenu = Menu.buildFromTemplate([
-      { role: "undo", label: "Отменить" },
-      { role: "redo", label: "Повторить" },
+      { role: "undo", label: "Undo" },
+      { role: "redo", label: "Redo" },
       { type: "separator" },
-      { role: "cut", label: "Вырезать" },
-      { role: "copy", label: "Копировать" },
+      { role: "cut", label: "Cut" },
+      { role: "copy", label: "Copy" },
       {
-        label: "Вставить",
+        label: "Paste",
         accelerator: "CmdOrCtrl+V",
         click: handlePaste,
       },
       { type: "separator" },
-      { role: "selectAll", label: "Выделить всё" },
+      { role: "selectAll", label: "Select All" },
     ]);
     contextMenu.popup();
   });
 
-  // Регистрируем обработку Ctrl+V на уровне главного меню
+  // Register Ctrl+V handling at the application menu level
   const appMenu = Menu.buildFromTemplate([
     {
       label: "Edit",

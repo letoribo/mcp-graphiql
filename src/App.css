@@ -1,113 +1,131 @@
-@import "graphiql/graphiql.css";
+/* src/App.css */
 
-/* Базовый сброс и размеры контейнера */
+/* Catppuccin Mocha HSL Variables */
+.graphiql-container,
+.graphiql-container.graphiql-dark {
+  --color-base: 240, 21%, 12%;      /* #1e1e2e - Primary background */
+  --color-alt: 240, 23%, 9%;        /* #11111b - Editor background */
+  --color-primary: 217, 91%, 76%;   /* #89b4fa - Accent (buttons/highlights) */
+  --color-secondary: 240, 19%, 16%; /* #181825 - Panels and tabs */
+  --color-neutral: 226, 64%, 88%;   /* #cdd6f4 - Text */
+}
+
+/* Page Reset */
 html, body, #root {
   margin: 0;
   padding: 0;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background-color: #0b0e14;
+  background-color: #11111b;
 }
 
-.graphiql-container {
-  width: 100vw !important;
-  height: 100vh !important;
-  display: flex !important;
-}
-
-/* Развертка и сетка редакторов */
-.graphiql-editors {
-  flex: 1 1 50% !important;
-  min-width: 300px !important;
-  height: 100% !important;
-  display: flex !important;
-  flex-direction: column !important;
-}
-
-.graphiql-response {
-  flex: 1 1 50% !important;
-  min-width: 300px !important;
-  height: 100% !important;
-}
-
-/* ФИКС: Позволяем CodeMirror сжиматься, давая место Variables/Headers */
-.graphiql-editor,
-.cm-editor,
-.CodeMirror {
-  flex: 1 1 auto !important;
-  min-height: 0 !important;
-  width: 100% !important;
-}
-
-/* ИЗОЛИРОВАННЫЕ горизонтальные верхние табы */
-.graphiql-tabs {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  list-style: none !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  gap: 4px !important;
-}
-
-.graphiql-tab {
-  display: inline-flex !important;
-  align-items: center !important;
-  list-style-type: none !important;
-}
-
-/* Боковая панель документации */
-.graphiql-doc-explorer,
-.graphiql-sidebar,
-.graphiql-sidebar-section {
+/* CodeMirror Editor Background in Dark Mode */
+.graphiql-container.graphiql-dark .cm-editor,
+.graphiql-container.graphiql-dark .cm-gutters {
   background-color: #11111b !important;
-  color: #cdd6f4 !important;
-  font-family: system-ui, -apple-system, sans-serif !important;
 }
 
-.graphiql-doc-explorer a,
-.graphiql-container a {
-  color: #89b4fa !important;
-  text-decoration: none !important;
-}
-
-.graphiql-doc-explorer a:hover {
-  text-decoration: underline !important;
-}
-
-.graphiql-doc-explorer input,
-.graphiql-container input[type="search"],
-.graphiql-container input[type="text"] {
+/* Settings Modal Backdrop Override */
+.graphiql-container.graphiql-dark .graphiql-dialog {
   background-color: #1e1e2e !important;
-  color: #cdd6f4 !important;
-  border: 1px solid #45475a !important;
-  border-radius: 4px !important;
-  padding: 4px 8px !important;
+  border: 1px solid #313244 !important;
 }
 
-/* Нижняя панель Variables / Headers */
-.graphiql-editor-tools {
-  background-color: #151821 !important;
-  flex: 0 0 auto !important;
-}
-
-.graphiql-editor-tools-tabs button,
-.graphiql-container button[role="tab"],
-.graphiql-editor-tools-tab {
-  background-color: #1e1e2e !important;
-  color: #cdd6f4 !important;
-  border: none !important;
-  outline: none !important;
-  padding: 4px 12px !important;
-  margin-right: 2px !important;
-  border-radius: 4px 4px 0 0 !important;
-  cursor: pointer !important;
-}
-
-.graphiql-container button[role="tab"][aria-selected="true"],
-.graphiql-container button[data-active="true"] {
+/* Panel Resize Handle Override */
+.graphiql-container [data-panel-resize-handle-id] {
   background-color: #313244 !important;
+}
+
+.graphiql-container [data-panel-resize-handle-id]:hover {
+  background-color: #89b4fa !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* DOCS EXPLORER SEARCH & FULL-WIDTH OVERLAY FIX                              */
+/* -------------------------------------------------------------------------- */
+
+/* Header container as relative reference for full-width overlay */
+.graphiql-doc-explorer-header,
+.graphiql-doc-explorer-title-bar,
+.graphiql-doc-explorer [class*="header"],
+.graphiql-doc-explorer [class*="title-bar"] {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 8px 12px !important;
+  min-height: 48px !important;
+  box-sizing: border-box !important;
+}
+
+/* Default collapsed search wrapper */
+.graphiql-doc-explorer-search,
+.graphiql-doc-explorer [class*="search"] {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  width: 120px !important;
+  max-width: 100% !important;
+  transition: all 0.15s ease-in-out;
+}
+
+/* Expand across the entire header area when focused */
+.graphiql-doc-explorer-search:focus-within,
+.graphiql-doc-explorer [class*="search"]:focus-within {
+  position: absolute !important;
+  top: 8px !important;
+  left: 8px !important;
+  right: 8px !important;
+  width: calc(100% - 16px) !important;
+  height: calc(100% - 16px) !important;
+  max-width: none !important;
+  z-index: 100 !important;
+}
+
+/* Vertically align search icon */
+.graphiql-doc-explorer-search svg,
+.graphiql-doc-explorer [class*="search"] svg {
+  position: absolute !important;
+  left: 10px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  width: 14px !important;
+  height: 14px !important;
+  pointer-events: none !important;
+  opacity: 0.6 !important;
+  color: #cdd6f4 !important;
+  z-index: 101 !important;
+}
+
+/* Base search input styling */
+.graphiql-doc-explorer input,
+.graphiql-doc-explorer [class*="search"] input {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 32px !important;
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: #cdd6f4 !important;
+  border: 1px solid #313244 !important;
+  border-radius: 6px !important;
+  padding: 0 10px 0 32px !important;
+  font-size: 12px !important;
+  outline: none !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* Solid background hides "Docs" text completely on focus */
+.graphiql-doc-explorer input:focus,
+.graphiql-doc-explorer [class*="search"] input:focus {
+  background-color: #1e1e2e !important;
+  border-color: #89b4fa !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Documentation links palette match */
+.graphiql-doc-explorer a,
+.graphiql-doc-explorer .graphiql-doc-explorer-type-name {
   color: #89b4fa !important;
-  font-weight: bold !important;
 }

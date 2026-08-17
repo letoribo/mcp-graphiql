@@ -1,7 +1,15 @@
-# Tauri + React + Typescript
+# GraphiQL Desktop App
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+Standalone GraphiQL client with Catppuccin Mocha theme, Electron support, and disabled CORS rules for local API debugging.
 
-## Recommended IDE Setup
+## Features
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- **No CORS Restrictions**: Native Electron window with disabled web security for querying local and remote GraphQL endpoints.
+- **Catppuccin Mocha Theme**: Pre-configured dark UI.
+- **Auto-Layout Migration**: Automatic state recovery for panel splitters.
+
+## Quick Start
+
+```bash
+npm install
+npm run electron:dev

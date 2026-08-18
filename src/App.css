@@ -42,35 +42,55 @@ html, body, #root {
 }
 
 /* -------------------------------------------------------------------------- */
-/* DOCS EXPLORER SEARCH & FULL-WIDTH OVERLAY FIX                              */
+/* DOCS EXPLORER SEARCH & HEADER FIXES                                        */
 /* -------------------------------------------------------------------------- */
 
-/* Header container as relative reference for full-width overlay */
 .graphiql-doc-explorer-header,
-.graphiql-doc-explorer-title-bar,
-.graphiql-doc-explorer [class*="header"],
-.graphiql-doc-explorer [class*="title-bar"] {
+.graphiql-doc-explorer [class*="header"] {
+  position: relative !important;
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  padding: 16px 20px 8px 20px !important;
+  min-height: 48px !important;
+  box-sizing: border-box !important;
+  gap: 8px !important;
+}
+
+/* Header content container (< Docs back link and Title) */
+.graphiql-doc-explorer-header-content,
+.graphiql-doc-explorer-title-bar {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 4px !important;
+  flex: 1 1 auto !important;
+}
+
+.graphiql-doc-explorer-search,
+.graphiql-doc-explorer [class*="search"],
+.graphiql-doc-explorer-header button {
   position: relative !important;
   display: flex !important;
   align-items: center !important;
-  justify-content: space-between !important;
-  padding: 8px 12px !important;
-  min-height: 48px !important;
+  justify-content: center !important;
+  flex: 0 0 auto !important;
+  margin-left: auto !important;
+  min-width: 32px !important;
+  max-width: 120px !important;
+  height: 28px !important;
+  transition: all 0.15s ease-in-out;
   box-sizing: border-box !important;
 }
 
-/* Default collapsed search wrapper */
-.graphiql-doc-explorer-search,
-.graphiql-doc-explorer [class*="search"] {
-  position: relative !important;
-  display: flex !important;
-  align-items: center !important;
-  width: 120px !important;
-  max-width: 100% !important;
-  transition: all 0.15s ease-in-out;
+.graphiql-doc-explorer-search key,
+.graphiql-doc-explorer-search kbd,
+.graphiql-doc-explorer [class*="search"] key,
+.graphiql-doc-explorer [class*="search"] kbd,
+.graphiql-doc-explorer [class*="shortcut"] {
+  display: none !important;
 }
 
-/* Expand across the entire header area when focused */
 .graphiql-doc-explorer-search:focus-within,
 .graphiql-doc-explorer [class*="search"]:focus-within {
   position: absolute !important;
@@ -83,11 +103,35 @@ html, body, #root {
   z-index: 100 !important;
 }
 
-/* Vertically align search icon */
+.graphiql-doc-explorer input,
+.graphiql-doc-explorer [class*="search"] input {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 28px !important;
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: #cdd6f4 !important;
+  border: 1px solid #313244 !important;
+  border-radius: 6px !important;
+  padding: 0 8px 0 28px !important;
+  font-size: 12px !important;
+  outline: none !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  text-overflow: ellipsis !important;
+}
+
+.graphiql-doc-explorer input:focus,
+.graphiql-doc-explorer [class*="search"] input:focus {
+  background-color: #1e1e2e !important;
+  border-color: #89b4fa !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+}
+
 .graphiql-doc-explorer-search svg,
 .graphiql-doc-explorer [class*="search"] svg {
   position: absolute !important;
-  left: 10px !important;
+  left: 8px !important;
   top: 50% !important;
   transform: translateY(-50%) !important;
   width: 14px !important;
@@ -98,34 +142,233 @@ html, body, #root {
   z-index: 101 !important;
 }
 
-/* Base search input styling */
-.graphiql-doc-explorer input,
-.graphiql-doc-explorer [class*="search"] input {
-  width: 100% !important;
-  height: 100% !important;
-  min-height: 32px !important;
-  background-color: rgba(255, 255, 255, 0.05) !important;
-  color: #cdd6f4 !important;
-  border: 1px solid #313244 !important;
-  border-radius: 6px !important;
-  padding: 0 10px 0 32px !important;
-  font-size: 12px !important;
-  outline: none !important;
-  box-shadow: none !important;
-  margin: 0 !important;
+/* -------------------------------------------------------------------------- */
+/* DOCS EXPLORER CONTENT, TITLE & BACK BUTTON                                 */
+/* -------------------------------------------------------------------------- */
+
+.graphiql-doc-explorer-content {
+  padding: 8px 20px 16px 20px !important;
   box-sizing: border-box !important;
 }
 
-/* Solid background hides "Docs" text completely on focus */
-.graphiql-doc-explorer input:focus,
-.graphiql-doc-explorer [class*="search"] input:focus {
+/* Back button (< Docs) */
+.graphiql-doc-explorer-back,
+a.graphiql-doc-explorer-back,
+button.graphiql-doc-explorer-back {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  color: #a6adc8 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin-bottom: 2px !important;
+  cursor: pointer !important;
+  text-decoration: none !important;
+}
+
+.graphiql-doc-explorer-back:hover {
+  color: #89b4fa !important;
+}
+
+.graphiql-doc-explorer-title {
+  font-size: 24px !important;
+  font-weight: 700 !important;
+  color: #cdd6f4 !important;
+  display: block !important;
+  margin: 0 !important;
+  line-height: 1.2 !important;
+}
+
+.graphiql-doc-explorer-content p {
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+  color: #a6adc8 !important;
+  margin-top: 6px !important;
+  margin-bottom: 14px !important;
+}
+
+.graphiql-doc-explorer-section-title {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #7f849c !important;
+  margin-top: 14px !important;
+  margin-bottom: 8px !important;
+  line-height: 1 !important;
+}
+
+.graphiql-doc-explorer-section-title svg {
+  display: inline-block !important;
+  flex-shrink: 0 !important;
+  vertical-align: middle !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* FIELDS & TYPES FORMATTING                                                  */
+/* -------------------------------------------------------------------------- */
+
+/* Section content container (vertical stacked list of items) */
+.graphiql-doc-explorer-section-content {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Single field row in detail view (id: String, icon: String) */
+.graphiql-doc-explorer-field {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: baseline !important;
+  gap: 4px !important;
+  margin-bottom: 10px !important;
+}
+
+/* Field name (id, icon, name) - blue accent without underline */
+.graphiql-doc-explorer-field-name,
+.graphiql-doc-explorer-field-name a,
+.graphiql-doc-explorer-field > a:first-child,
+.graphiql-doc-explorer-field a {
+  color: #89b4fa !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+}
+
+/* Type name (String, Guild, Query, Mutation) - peach accent */
+.graphiql-doc-explorer-type-name {
+  display: inline-block !important;
+  color: #fab387 !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+  line-height: 1.3 !important;
+}
+
+.graphiql-doc-explorer-type-name:hover {
+  color: #f9e2af !important;
+  text-decoration: underline !important;
+}
+
+/* Root Types row alignment (query : Query / mutation : Mutation) horizontally */
+.graphiql-doc-explorer-section-content > div:has(.graphiql-doc-explorer-root-type) {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: baseline !important;
+  flex-wrap: nowrap !important;
+  gap: 4px !important;
+  margin-bottom: 6px !important;
+}
+
+.graphiql-doc-explorer-root-type {
+  display: inline !important;
+  color: #89b4fa !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
+  line-height: 1.3 !important;
+}
+
+/* All Schema Types nested wrappers styling (div > div > a) */
+.graphiql-doc-explorer-section-content > div:not(:has(.graphiql-doc-explorer-root-type)) {
+  display: block !important;
+  width: 100% !important;
+  margin-bottom: 6px !important;
+}
+
+.graphiql-doc-explorer-section-content > div > div {
+  display: block !important;
+  width: 100% !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* HISTORY STYLING & ALIGNMENT FIXES                                          */
+/* -------------------------------------------------------------------------- */
+
+ul.graphiql-history-items,
+.graphiql-history-items,
+.graphiql-history-items li {
+  list-style-type: none !important;
+  padding-left: 0 !important;
+  margin-left: 0 !important;
+}
+
+.graphiql-history-items li::marker {
+  display: none !important;
+  color: transparent !important;
+}
+
+.graphiql-history-items button {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: inherit !important;
+  cursor: pointer !important;
+  opacity: 0.6 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 20px !important;
+  padding: 0 4px !important;
+}
+
+.graphiql-history-items button:hover {
+  opacity: 1 !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  border-radius: 4px !important;
+}
+
+[data-radix-popper-content-wrapper] [role="tooltip"],
+.graphiql-tooltip {
   background-color: #1e1e2e !important;
-  border-color: #89b4fa !important;
+  color: #cdd6f4 !important;
+  border: 1px solid #313244 !important;
+  border-radius: 6px !important;
+  padding: 6px 10px !important;
+  font-size: 12px !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
 }
 
-/* Documentation links palette match */
-.graphiql-doc-explorer a,
-.graphiql-doc-explorer .graphiql-doc-explorer-type-name {
-  color: #89b4fa !important;
+.graphiql-history-header,
+.graphiql-history-section > div:first-child {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  margin-bottom: 8px !important;
+}
+
+.graphiql-history-header button,
+.graphiql-history-section button {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid #313244 !important;
+  border-radius: 4px !important;
+  color: #cdd6f4 !important;
+  padding: 2px 8px !important;
+  font-size: 11px !important;
+  cursor: pointer !important;
+}
+
+.graphiql-history-header button:hover,
+.graphiql-history-section button:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  border-color: #89b4fa !important;
+}
+
+.graphiql-history-header,
+.graphiql-history-items li {
+  display: flex !important;
+  align-items: center !important;
+  line-height: 1 !important;
+}
+
+.graphiql-history-items li > * {
+  display: inline-flex !important;
+  align-items: center !important;
+  vertical-align: middle !important;
 }

@@ -29,7 +29,6 @@ export default function App() {
 
     if (urlParam) {
       setUrl(urlParam);
-      setActiveUrl(urlParam);
       setIsConfigLoaded(true);
       return;
     }
@@ -39,7 +38,6 @@ export default function App() {
       .then((data) => {
         if (data?.defaultEndpoint) {
           setUrl(data.defaultEndpoint);
-          setActiveUrl(data.defaultEndpoint);
         }
       })
       .catch((err) => console.error("Failed to load config:", err))
@@ -49,12 +47,12 @@ export default function App() {
   useEffect(() => {
     if (!url) {
       setErrorMessage("");
+      setActiveUrl("");
       return;
     }
 
     if (url === activeUrl) return;
 
-    // Быстрая проверка формата на клиенте
     if (!isValidHttpUrl(url)) {
       setErrorMessage("ENDPOINT must be a valid HTTP/HTTPS URL");
       return;
@@ -62,6 +60,8 @@ export default function App() {
 
     setErrorMessage("");
     setIsSyncing(true);
+    // Unmount GraphiQL during endpoint switch to prevent requests to old/dead bridge
+    setActiveUrl("");
 
     const timer = setTimeout(() => {
       fetch("http://localhost:3000/api/switch-endpoint", {
@@ -72,44 +72,55 @@ export default function App() {
         .then((res) => res.json())
         .then((data) => {
           if (data.success) {
-            setActiveUrl(url);
-            setSchemaKey((prev) => prev + 1);
-            setErrorMessage("");
+            // Allow time for the spawned bridge process to open port 6274
+            setTimeout(() => {
+              setActiveUrl(url);
+              setSchemaKey((prev) => prev + 1);
+              setErrorMessage("");
+              setIsSyncing(false);
+            }, 600);
           } else {
             setErrorMessage(data.error || "ENDPOINT must be a valid URL");
+            setIsSyncing(false);
           }
         })
         .catch((err) => {
           setErrorMessage(err?.message || "Failed to connect to config server");
-        })
-        .finally(() => setIsSyncing(false));
+          setIsSyncing(false);
+        });
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [url, activeUrl]);
+  }, [url]);
 
   const fetcher = useMemo(() => {
     return async (graphQLParams: any, opts?: any) => {
       const activeEndpoint = "http://localhost:6274/graphiql";
 
-      try {
-        const res = await fetch(activeEndpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(opts?.headers || {}),
-          },
-          body: JSON.stringify(graphQLParams),
-        });
-
-        const text = await res.text();
+      for (let attempt = 0; attempt < 4; attempt++) {
         try {
-          return JSON.parse(text);
-        } catch {
-          return { errors: [{ message: text || `Status: ${res.status}` }] };
+          const res = await fetch(activeEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(opts?.headers || {}),
+            },
+            body: JSON.stringify(graphQLParams),
+          });
+
+          const text = await res.text();
+          try {
+            return JSON.parse(text);
+          } catch {
+            return { errors: [{ message: text || `Status: ${res.status}` }] };
+          }
+        } catch (err: any) {
+          if (attempt < 3) {
+            await new Promise((r) => setTimeout(r, 400));
+            continue;
+          }
+          return { errors: [{ message: err?.message || "Bridge offline or syncing..." }] };
         }
-      } catch (err: any) {
-        return { errors: [{ message: err?.message || "Bridge offline or syncing..." }] };
       }
     };
   }, []);
@@ -173,7 +184,7 @@ export default function App() {
         className="graphiql-wrapper"
         style={{ flex: 1, height: "100%", minHeight: 0, position: "relative", overflow: "hidden" }}
       >
-        {activeUrl && !errorMessage ? (
+        {activeUrl && !isSyncing ? (
           <GraphiQL key={`${activeUrl}-${schemaKey}`} fetcher={fetcher} defaultTheme="dark" />
         ) : (
           <div
@@ -187,7 +198,9 @@ export default function App() {
               fontSize: "14px",
             }}
           >
-            {errorMessage
+            {isSyncing
+              ? "Connecting to endpoint & fetching schema..."
+              : errorMessage
               ? "Fix the endpoint URL above to continue."
               : "Enter a valid GraphQL endpoint URL in the bar above to start."}
           </div>

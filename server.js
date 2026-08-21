@@ -1,25 +1,49 @@
 import http from 'http';
 import { fork } from 'child_process';
 import path from 'path';
+import fs from 'fs';
+import { createRequire } from 'module';
 
-let childProcess = null;
-let currentEndpoint = process.env.ENDPOINT || '';
-
-// Parse initial headers from env on startup (e.g. HEADERS='{"Authorization": "Bearer token"}')
-let currentHeaders = process.env.HEADERS ? parseHeaders(process.env.HEADERS) : {};
-
-const mcpIndexPath = path.resolve('/home/mcp-graphql-enhanced/dist/index.js');
+const require = createRequire(import.meta.url);
 
 function parseHeaders(headersInput) {
-  if (!headersInput) return {};
-  if (typeof headersInput === 'object') return headersInput;
+  if (!headersInput) return '{}';
+  if (typeof headersInput === 'object') {
+    return JSON.stringify(headersInput);
+  }
   try {
-    return JSON.parse(headersInput);
+    // Validate JSON string prior to passing
+    JSON.parse(headersInput);
+    return headersInput;
   } catch (err) {
     console.error(`[Bridge] Failed to parse headers JSON: ${err.message}`);
-    return {};
+    return '{}';
   }
 }
+
+function getMcpIndexPath() {
+  try {
+    const installedPath = require.resolve('@letoribo/mcp-graphql-enhanced');
+    console.log(`[Bridge] Using package path: ${installedPath}`);
+    return installedPath;
+  } catch (err) {
+    const localDevPath = path.resolve('../mcp-graphql-enhanced/dist/index.js');
+    if (fs.existsSync(localDevPath)) {
+      return localDevPath;
+    }
+    const explicitHomePath = path.resolve('/home/mcp-graphql-enhanced/dist/index.js');
+    if (fs.existsSync(explicitHomePath)) {
+      return explicitHomePath;
+    }
+    throw new Error('Could not resolve @letoribo/mcp-graphql-enhanced package.');
+  }
+}
+
+const mcpIndexPath = getMcpIndexPath();
+
+let currentEndpoint = process.env.ENDPOINT || '';
+let currentHeaders = process.env.HEADERS ? parseHeaders(process.env.HEADERS) : '{}';
+let childProcess = null;
 
 function isValidUrl(urlStr) {
   try {
@@ -30,62 +54,58 @@ function isValidUrl(urlStr) {
   }
 }
 
-function startBridge(endpoint, headers = {}) {
+function startBridge(endpoint, headersInput) {
   return new Promise((resolve, reject) => {
-    if (!isValidUrl(endpoint)) {
-      return reject(new Error('ENDPOINT must be a valid HTTP/HTTPS URL'));
+    const rawHeaders = parseHeaders(headersInput);
+
+    // Determine target endpoint: from supplied arguments or process.env.ENDPOINT without fallback
+    const targetEndpoint = (endpoint && isValidUrl(endpoint)) 
+      ? endpoint 
+      : process.env.ENDPOINT;
+
+    if (!targetEndpoint) {
+      console.log(`[Bridge] No valid endpoint provided. Bridge spawn deferred.`);
+      return resolve();
+    }
+
+    const childEnv = Object.assign({}, process.env, {
+      ENABLE_HTTP: 'true',
+      ALLOW_MUTATIONS: 'true',
+      ENDPOINT: targetEndpoint,
+      HEADERS: rawHeaders
+    });
+
+    currentEndpoint = targetEndpoint;
+    currentHeaders = rawHeaders;
+
+    console.log(`[Bridge] Spawning bridge for: ${targetEndpoint}`);
+    if (rawHeaders && rawHeaders !== '{}') {
+      console.log(`[Bridge] Raw HEADERS string passed successfully.`);
     }
 
     if (childProcess) {
-      console.log(`[Bridge] Terminating previous bridge process...`);
+      console.log(`[Bridge] Terminating previous process...`);
       childProcess.kill('SIGTERM');
     }
 
-    currentEndpoint = endpoint;
-    currentHeaders = headers;
-
-    const headersJson = JSON.stringify(headers);
-    console.log(`[Bridge] Spawning bridge for: ${endpoint}`);
-    if (Object.keys(headers).length > 0) {
-      console.log(`[Bridge] Passing headers: ${headersJson}`);
-    }
-
     const child = fork(mcpIndexPath, [], {
-      env: {
-        ...process.env,
-        ENABLE_HTTP: 'true',
-        ENDPOINT: endpoint,
-        // Pass custom headers to the bridge child process
-        HEADERS: headersJson
-      },
-      stdio: 'inherit'
+      env: childEnv,
+      stdio: ['inherit', 'inherit', 'inherit', 'ipc']
     });
 
-    let isSettled = false;
+    childProcess = child;
 
-    child.on('exit', (code) => {
-      if (!isSettled && code !== 0) {
-        isSettled = true;
-        childProcess = null;
-        reject(new Error('Failed to start bridge: ENDPOINT must be a valid URL'));
-      }
+    child.once('error', (err) => {
+      reject(err);
     });
 
-    // Allow time for the bridge process to initialize successfully
-    setTimeout(() => {
-      if (!isSettled) {
-        isSettled = true;
-        childProcess = child;
-        resolve();
-      }
-    }, 1200);
+    process.nextTick(() => {
+      resolve();
+    });
   });
 }
 
-// Initial boot if ENDPOINT is provided via CLI/env
-if (currentEndpoint) {
-  startBridge(currentEndpoint, currentHeaders).catch(err => console.error(`[BOOT ERROR] ${err.message}`));
-}
+startBridge(currentEndpoint, currentHeaders).catch(err => console.error(`[BOOT ERROR] ${err.message}`));
 
 const CONFIG_PORT = process.env.MCP_PORT || 3000;
 
@@ -101,7 +121,7 @@ http.createServer(async (req, res) => {
     if (req.method === 'HEAD') return res.end();
     return res.end(JSON.stringify({ 
       defaultEndpoint: currentEndpoint,
-      defaultHeaders: currentHeaders,
+      defaultHeaders: currentHeaders ? JSON.parse(currentHeaders) : {},
       bridgeUrl: 'http://localhost:6274/graphiql'
     }));
   }
@@ -121,13 +141,16 @@ http.createServer(async (req, res) => {
           }));
         }
 
-        const parsedHeaders = parseHeaders(headers);
-
-        await startBridge(endpoint, parsedHeaders);
+        await startBridge(endpoint, headers);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, endpoint, headers: parsedHeaders }));
+        res.end(JSON.stringify({ 
+          success: true, 
+          endpoint, 
+          headers: parseHeaders(headers) 
+        }));
       } catch (err) {
+        console.error(`[SYNC-WARN] Failed to reach ${url}:`, err?.message || err);
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, error: err.message }));
       }

@@ -56,7 +56,12 @@ function isValidUrl(urlStr) {
 
 function startBridge(endpoint, headersInput) {
   return new Promise((resolve, reject) => {
-    const rawHeaders = parseHeaders(headersInput);
+    // Preserve current headers if headersInput is undefined/null from UI instead of resetting to {}
+    const effectiveHeadersInput = (headersInput !== undefined && headersInput !== null) 
+      ? headersInput 
+      : currentHeaders;
+
+    const rawHeaders = parseHeaders(effectiveHeadersInput);
 
     // Determine target endpoint: from supplied arguments or process.env.ENDPOINT without fallback
     const targetEndpoint = (endpoint && isValidUrl(endpoint)) 
@@ -141,16 +146,18 @@ http.createServer(async (req, res) => {
           }));
         }
 
-        await startBridge(endpoint, headers);
+        // Use incoming headers or fallback to currentHeaders
+        const finalHeaders = (headers !== undefined && headers !== null) ? headers : currentHeaders;
+        await startBridge(endpoint, finalHeaders);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ 
           success: true, 
           endpoint, 
-          headers: parseHeaders(headers) 
+          headers: parseHeaders(finalHeaders) 
         }));
       } catch (err) {
-        console.error(`[SYNC-WARN] Failed to reach ${url}:`, err?.message || err);
+        console.error(`[SYNC-WARN] Failed to process request:`, err?.message || err);
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, error: err.message }));
       }

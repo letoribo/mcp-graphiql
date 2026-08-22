@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, clipboard } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import "../server.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,6 +17,9 @@ function createWindow() {
       webSecurity: false,
     },
   });
+
+  // Open DevTools for debugging network issues and inspection
+  win.webContents.openDevTools();
 
   // Direct text insertion into the active element
   const handlePaste = () => {
@@ -66,6 +70,36 @@ function createWindow() {
   Menu.setApplicationMenu(appMenu);
 
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+
+  // 1. Mask requests as a standard desktop Chrome browser
+  win.webContents.session.webRequest.onBeforeSendHeaders(
+    { urls: ["*://*/*"] },
+    (details, callback) => {
+      try {
+        const targetUrl = new URL(details.url);
+        details.requestHeaders["Origin"] = targetUrl.origin;
+        details.requestHeaders["User-Agent"] =
+          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+        details.requestHeaders["Sec-Fetch-Mode"] = "cors";
+        details.requestHeaders["Sec-Fetch-Site"] = "cross-site";
+      } catch (e) {
+        // Ignore invalid URLs
+      }
+      callback({ requestHeaders: details.requestHeaders });
+    }
+  );
+
+  // 2. Allow all CORS headers in server responses
+  win.webContents.session.webRequest.onHeadersReceived(
+    { urls: ["*://*/*"] },
+    (details, callback) => {
+      const responseHeaders = { ...details.responseHeaders };
+      responseHeaders["access-control-allow-origin"] = ["*"];
+      responseHeaders["access-control-allow-headers"] = ["*"];
+      responseHeaders["access-control-allow-methods"] = ["*"];
+      callback({ responseHeaders });
+    }
+  );
 
   if (devServerUrl) {
     win.loadURL(devServerUrl);

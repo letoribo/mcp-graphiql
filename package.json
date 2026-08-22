@@ -2,6 +2,8 @@
   "name": "mcp-graphiql",
   "private": true,
   "version": "0.1.0",
+  "description": "MCP GraphiQL Client",
+  "author": "letoribo <yuchistyakov@gmail.com>",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {

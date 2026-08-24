@@ -1,7 +1,7 @@
 {
   "name": "mcp-graphiql",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP GraphiQL Client",
   "author": "letoribo <yuchistyakov@gmail.com>",
   "type": "module",
@@ -21,20 +21,29 @@
       "output": "release"
     },
     "files": [
-      "dist/**/*",
-      "electron/**/*",
+      "dist",
+      "electron",
       "server.js",
       "package.json"
     ],
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.developer-tools"
     },
     "win": {
-      "target": ["nsis", "portable"]
+      "target": [
+        "nsis",
+        "portable"
+      ]
     },
     "linux": {
-      "target": ["AppImage", "deb"]
+      "target": [
+        "AppImage",
+        "deb"
+      ]
     }
   },
   "dependencies": {
@@ -54,6 +63,7 @@
     "electron-builder": "^26.15.3",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",
+    "vite-plugin-monaco-editor": "^1.1.0",
     "wait-on": "^9.1.0"
   }
 }

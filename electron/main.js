@@ -11,6 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let mainWindow = null;
+let serverProcess = null;
 
 // Register custom Privileged Scheme for ASAR UI assets before app.whenReady()
 protocol.registerSchemesAsPrivileged([
@@ -37,6 +38,23 @@ function getMimeType(filePath) {
   if (filePath.endsWith(".png")) return "image/png";
   if (filePath.endsWith(".jpg") || filePath.endsWith(".jpeg")) return "image/jpeg";
   return "application/octet-stream";
+}
+
+// Handler for IPC messages from the server to relay to the UI
+function handleServerMessage(msg) {
+  if (msg?.type === "MCP_TOOL_CALL" && msg.toolName === "query-graphql") {
+    const rawQuery = msg.args?.query;
+
+    if (rawQuery && !rawQuery.includes("__schema")) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("mcp:set-query", {
+          query: rawQuery,
+          variables: msg.args?.variables || {},
+          headers: msg.args?.headers || {},
+        });
+      }
+    }
+  }
 }
 
 function createWindow() {
@@ -107,8 +125,8 @@ function createWindow() {
   mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
     filter,
     (details, callback) => {
-      // Ignore local config server requests
-      if (details.url.includes("localhost:3000") || details.url.includes("127.0.0.1:3000")) {
+      // Ignore local server proxy requests (6274)
+      if (details.url.includes("localhost:6274") || details.url.includes("127.0.0.1:6274")) {
         return callback({ requestHeaders: details.requestHeaders });
       }
 
@@ -189,12 +207,32 @@ app.whenReady().then(async () => {
     }
   });
 
-  if (app.isPackaged) {
-    try {
-      await import("../server.js");
-    } catch (err) {
-      console.warn("[Main Process] Background server warning:", err.message);
+  // Listen to current process messages
+  process.on("message", handleServerMessage);
+
+  // Safe background server launch with protection against re-listen errors
+  const candidateServerPaths = [
+    path.join(__dirname, "server.js"),
+    path.resolve(__dirname, "..", "server.js"),
+    path.resolve(app.getAppPath(), "server.js"),
+  ];
+
+  let serverLoaded = false;
+  for (const serverPath of candidateServerPaths) {
+    if (fs.existsSync(serverPath)) {
+      try {
+        await import(`file://${serverPath}?update=${Date.now()}`);
+        console.log(`[Main Process] Background server loaded from: ${serverPath}`);
+        serverLoaded = true;
+      } catch (err) {
+        console.warn(`[Main Process] Server import notice (${serverPath}):`, err.message);
+      }
+      break;
     }
+  }
+
+  if (!serverLoaded) {
+    console.warn("[Main Process] Could not find or boot server.js in candidate paths");
   }
 
   createWindow();
@@ -202,4 +240,11 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", () => {
+  if (serverProcess) {
+    serverProcess.kill("SIGINT");
+  }
+  process.exit(0);
 });

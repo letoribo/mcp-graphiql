@@ -11,7 +11,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "server": "cross-env ENABLE_HTTP=true node server",
-    "electron:dev": "cross-env VITE_DEV_SERVER_URL=http://localhost:5173 concurrently \"npm run server\" \"npm run dev\" \"wait-on tcp:5173 tcp:3000 && electron .\"",
+    "server:watch": "cross-env ENABLE_HTTP=true nodemon --watch server.js --watch electron server.js",
+    "electron:dev": "cross-env VITE_DEV_SERVER_URL=http://localhost:5173 concurrently --kill-others -k -s first \"npm run dev\" \"wait-on tcp:5173 && nodemon --watch electron --exec electron .\"",
     "dist": "npm run build && electron-builder"
   },
   "build": {
@@ -47,7 +48,7 @@
     }
   },
   "dependencies": {
-    "@letoribo/mcp-graphql-enhanced": "^4.14.5",
+    "@letoribo/mcp-graphql-enhanced": "^4.15.3",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "graphiql": "^5.2.4",
     "react": "^19.2.8",
@@ -61,6 +62,7 @@
     "cross-env": "^10.1.0",
     "electron": "^43.4.0",
     "electron-builder": "^26.15.3",
+    "nodemon": "^3.1.14",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",
     "vite-plugin-monaco-editor": "^1.1.0",

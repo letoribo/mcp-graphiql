@@ -1,10 +1,16 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { GraphiQL } from "graphiql";
-
-import "@graphiql/react/style.css"; 
+import { useEditorContext } from "@graphiql/react";
+import { parse, print } from "graphql";
+import "@graphiql/react/style.css";
 import "graphiql/graphiql.css";
-
 import "./App.css";
+
+window.addEventListener("unhandledrejection", (event) => {
+  if (event.reason === "Canceled" || event.reason?.message === "Canceled") {
+    event.preventDefault();
+  }
+});
 
 function isValidHttpUrl(string: string) {
   try {
@@ -15,6 +21,54 @@ function isValidHttpUrl(string: string) {
   }
 }
 
+function formatGraphQLQuery(queryStr: string): string {
+  if (!queryStr || !queryStr.trim()) return "";
+  try {
+    return print(parse(queryStr));
+  } catch {
+    return queryStr;
+  }
+}
+
+interface IncomingTab {
+  query: string;
+  variables: string;
+  headers: string;
+}
+
+function EditorBridge({ incomingQuery }: { incomingQuery: IncomingTab | null }) {
+  const editorCtx = useEditorContext();
+  const processedRef = useRef<IncomingTab | null>(null);
+
+  useEffect(() => {
+    if (!editorCtx || !incomingQuery || processedRef.current === incomingQuery) return;
+
+    let retries = 0;
+    const interval = setInterval(() => {
+      retries++;
+      if (editorCtx.queryEditor || retries > 20) {
+        clearInterval(interval);
+        if (!editorCtx.queryEditor) return;
+
+        processedRef.current = incomingQuery;
+        const currentVal = editorCtx.queryEditor.getValue() || "";
+
+        if (!currentVal.trim()) {
+          editorCtx.queryEditor.setValue(incomingQuery.query);
+          if (editorCtx.variableEditor) editorCtx.variableEditor.setValue(incomingQuery.variables);
+          if (editorCtx.headerEditor) editorCtx.headerEditor.setValue(incomingQuery.headers);
+        } else if (typeof editorCtx.addTab === "function") {
+          editorCtx.addTab();
+        }
+      }
+    }, 50);
+
+    return () => clearInterval(interval);
+  }, [editorCtx, incomingQuery]);
+
+  return null;
+}
+
 export default function App() {
   const [url, setUrl] = useState<string>("");
   const [activeUrl, setActiveUrl] = useState<string>("");
@@ -22,6 +76,85 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [schemaKey, setSchemaKey] = useState<number>(0);
   const [isConfigLoaded, setIsConfigLoaded] = useState<boolean>(false);
+
+  const [latestIncoming, setLatestIncoming] = useState<IncomingTab | null>(null);
+  const isServerInitiated = useRef(false);
+
+  useEffect(() => {
+    try {
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith("graphiql:")) {
+          localStorage.removeItem(key);
+        }
+      });
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = () => {
+      if (eventSource) eventSource.close();
+
+      eventSource = new EventSource("http://localhost:6274/api/stream");
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+
+          if (data.endpoint) {
+            isServerInitiated.current = true;
+            setUrl(data.endpoint);
+            setActiveUrl(data.endpoint);
+            setIsSyncing(false);
+          }
+
+          const formattedQuery = data.query ? formatGraphQLQuery(data.query) : "";
+          if (!formattedQuery.trim()) return;
+
+          const formattedVars = data.variables
+            ? typeof data.variables === "string"
+              ? data.variables
+              : JSON.stringify(data.variables, null, 2)
+            : "";
+          const formattedHeaders = data.headers
+            ? typeof data.headers === "string"
+              ? data.headers
+              : JSON.stringify(data.headers, null, 2)
+            : "";
+
+          setLatestIncoming({
+            query: formattedQuery,
+            variables: formattedVars,
+            headers: formattedHeaders,
+          });
+        } catch (e) {
+          console.error("Failed to parse SSE event:", e);
+        }
+      };
+
+      eventSource.onerror = () => {
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        if (!reconnectTimer) {
+          reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            connect();
+          }, 1000);
+        }
+      };
+    };
+
+    connect();
+
+    return () => {
+      if (eventSource) eventSource.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+    };
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -33,14 +166,16 @@ export default function App() {
       return;
     }
 
-    fetch("http://localhost:3000/api/config")
+    fetch("http://localhost:6274/api/config")
       .then((res) => res.json())
       .then((data) => {
-        if (data?.defaultEndpoint) {
-          setUrl(data.defaultEndpoint);
+        const defaultUrl = data?.defaultEndpoint || data?.endpoint || "";
+        if (defaultUrl) {
+          setUrl(defaultUrl);
+          setActiveUrl(defaultUrl);
         }
       })
-      .catch((err) => console.error("Failed to load config:", err))
+      .catch(() => setUrl(""))
       .finally(() => setIsConfigLoaded(true));
   }, []);
 
@@ -48,6 +183,11 @@ export default function App() {
     if (!url) {
       setErrorMessage("");
       setActiveUrl("");
+      return;
+    }
+
+    if (isServerInitiated.current) {
+      isServerInitiated.current = false;
       return;
     }
 
@@ -60,11 +200,9 @@ export default function App() {
 
     setErrorMessage("");
     setIsSyncing(true);
-    // Unmount GraphiQL during endpoint switch to prevent requests to old/dead bridge
-    setActiveUrl("");
 
     const timer = setTimeout(() => {
-      fetch("http://localhost:3000/api/switch-endpoint", {
+      fetch("http://localhost:6274/api/switch-endpoint", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ endpoint: url }),
@@ -72,37 +210,41 @@ export default function App() {
         .then((res) => res.json())
         .then((data) => {
           if (data.success) {
-            // Allow time for the spawned bridge process to open port 6274
-            setTimeout(() => {
-              setActiveUrl(url);
-              setSchemaKey((prev) => prev + 1);
-              setErrorMessage("");
-              setIsSyncing(false);
-            }, 600);
+            setActiveUrl(url);
+            setSchemaKey((prev) => prev + 1);
+            setErrorMessage("");
           } else {
             setErrorMessage(data.error || "ENDPOINT must be a valid URL");
-            setIsSyncing(false);
           }
         })
         .catch((err) => {
           setErrorMessage(err?.message || "Failed to connect to config server");
+        })
+        .finally(() => {
           setIsSyncing(false);
         });
-    }, 800);
+    }, 400);
 
     return () => clearTimeout(timer);
-  }, [url]);
+  }, [url, activeUrl]);
 
   const fetcher = useMemo(() => {
     return async (graphQLParams: any, opts?: any) => {
-      const activeEndpoint = "http://localhost:6274/graphiql";
+      const target = activeUrl?.trim() || url?.trim();
+
+      if (!target || target.includes("localhost:6274") || target.includes("127.0.0.1:6274")) {
+        return { data: null };
+      }
+
+      const proxyEndpoint = "http://localhost:6274/graphql";
 
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
-          const res = await fetch(activeEndpoint, {
+          const res = await fetch(proxyEndpoint, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
+              "x-target-endpoint": target,
               ...(opts?.headers || {}),
             },
             body: JSON.stringify(graphQLParams),
@@ -123,11 +265,10 @@ export default function App() {
         }
       }
     };
-  }, []);
+  }, [activeUrl, url]);
 
   return (
     <div style={{ width: "100vw", height: "100vh", display: "flex", flexDirection: "column" }}>
-      {/* Top Input Bar */}
       <div
         style={{
           display: "flex",
@@ -142,7 +283,10 @@ export default function App() {
         <input
           type="text"
           value={url}
-          onChange={(e) => setUrl(e.target.value)}
+          onChange={(e) => {
+            isServerInitiated.current = false;
+            setUrl(e.target.value);
+          }}
           placeholder={isConfigLoaded ? "Paste GraphQL endpoint URL..." : "Loading config..."}
           style={{
             flex: 1,
@@ -163,7 +307,6 @@ export default function App() {
         )}
       </div>
 
-      {/* Error Banner */}
       {errorMessage && (
         <div
           style={{
@@ -179,13 +322,19 @@ export default function App() {
         </div>
       )}
 
-      {/* GraphiQL Canvas */}
       <div
         className="graphiql-wrapper"
         style={{ flex: 1, height: "100%", minHeight: 0, position: "relative", overflow: "hidden" }}
       >
-        {activeUrl && !isSyncing ? (
-          <GraphiQL key={`${activeUrl}-${schemaKey}`} fetcher={fetcher} defaultTheme="dark" />
+        {activeUrl ? (
+          <GraphiQL
+            key={`${activeUrl}-${schemaKey}`}
+            fetcher={fetcher}
+            defaultTheme="dark"
+            defaultQuery=""
+          >
+            <EditorBridge incomingQuery={latestIncoming} />
+          </GraphiQL>
         ) : (
           <div
             style={{

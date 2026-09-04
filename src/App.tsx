@@ -50,15 +50,27 @@ function EditorBridge({ incomingQuery }: { incomingQuery: IncomingTab | null }) 
         clearInterval(interval);
         if (!editorCtx.queryEditor) return;
 
-        processedRef.current = incomingQuery;
         const currentVal = editorCtx.queryEditor.getValue() || "";
 
+        // If the current editor is empty, populate it directly
         if (!currentVal.trim()) {
+          processedRef.current = incomingQuery;
           editorCtx.queryEditor.setValue(incomingQuery.query);
           if (editorCtx.variableEditor) editorCtx.variableEditor.setValue(incomingQuery.variables);
           if (editorCtx.headerEditor) editorCtx.headerEditor.setValue(incomingQuery.headers);
         } else if (typeof editorCtx.addTab === "function") {
+          // If the editor is occupied, create a new tab and delay setting processedRef
+          // so the next tick populates the newly mounted editor instance
           editorCtx.addTab();
+          // Delay allows tab creation to complete before populating values into queryEditor
+          setTimeout(() => {
+            if (editorCtx.queryEditor) {
+              editorCtx.queryEditor.setValue(incomingQuery.query);
+              if (editorCtx.variableEditor) editorCtx.variableEditor.setValue(incomingQuery.variables);
+              if (editorCtx.headerEditor) editorCtx.headerEditor.setValue(incomingQuery.headers);
+              processedRef.current = incomingQuery;
+            }
+          }, 100);
         }
       }
     }, 50);
@@ -230,6 +242,11 @@ export default function App() {
 
   const fetcher = useMemo(() => {
     return async (graphQLParams: any, opts?: any) => {
+      // Guard against sending empty queries to the server (e.g. during new tab creation)
+      if (!graphQLParams?.query || !graphQLParams.query.trim()) {
+        return { data: null };
+      }
+
       const target = activeUrl?.trim() || url?.trim();
 
       if (!target || target.includes("localhost:6274") || target.includes("127.0.0.1:6274")) {

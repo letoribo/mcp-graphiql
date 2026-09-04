@@ -7,6 +7,11 @@ import fs from "node:fs";
 app.commandLine.appendSwitch("disable-web-security");
 process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
 
+// Disable hardware acceleration on Linux/dev setups if requested via env
+if (process.env.DISABLE_GPU === 'true') {
+  app.disableHardwareAcceleration();
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 

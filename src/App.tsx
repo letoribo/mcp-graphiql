@@ -52,17 +52,13 @@ function EditorBridge({ incomingQuery }: { incomingQuery: IncomingTab | null }) 
 
         const currentVal = editorCtx.queryEditor.getValue() || "";
 
-        // If the current editor is empty, populate it directly
         if (!currentVal.trim()) {
           processedRef.current = incomingQuery;
           editorCtx.queryEditor.setValue(incomingQuery.query);
           if (editorCtx.variableEditor) editorCtx.variableEditor.setValue(incomingQuery.variables);
           if (editorCtx.headerEditor) editorCtx.headerEditor.setValue(incomingQuery.headers);
         } else if (typeof editorCtx.addTab === "function") {
-          // If the editor is occupied, create a new tab and delay setting processedRef
-          // so the next tick populates the newly mounted editor instance
           editorCtx.addTab();
-          // Delay allows tab creation to complete before populating values into queryEditor
           setTimeout(() => {
             if (editorCtx.queryEditor) {
               editorCtx.queryEditor.setValue(incomingQuery.query);
@@ -87,6 +83,7 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [schemaKey, setSchemaKey] = useState<number>(0);
+  const [isReloading, setIsReloading] = useState<boolean>(false);
   const [isConfigLoaded, setIsConfigLoaded] = useState<boolean>(false);
 
   const [latestIncoming, setLatestIncoming] = useState<IncomingTab | null>(null);
@@ -115,6 +112,14 @@ export default function App() {
         try {
           const data = JSON.parse(event.data);
 
+          if (data.type === "SCHEMA_UPDATED" || data.type === "MCP_SCHEMA_EVOLVED") {
+            setIsReloading(true);
+            setSchemaKey((prev) => prev + 1);
+            setTimeout(() => {
+              setIsReloading(false);
+            }, 50);
+          }
+
           if (data.endpoint) {
             isServerInitiated.current = true;
             setUrl(data.endpoint);
@@ -122,25 +127,27 @@ export default function App() {
             setIsSyncing(false);
           }
 
-          const formattedQuery = data.query ? formatGraphQLQuery(data.query) : "";
-          if (!formattedQuery.trim()) return;
+          if (data.query) {
+            const formattedQuery = formatGraphQLQuery(data.query);
+            if (formattedQuery.trim()) {
+              const formattedVars = data.variables
+                ? typeof data.variables === "string"
+                  ? data.variables
+                  : JSON.stringify(data.variables, null, 2)
+                : "";
+              const formattedHeaders = data.headers
+                ? typeof data.headers === "string"
+                  ? data.headers
+                  : JSON.stringify(data.headers, null, 2)
+                : "";
 
-          const formattedVars = data.variables
-            ? typeof data.variables === "string"
-              ? data.variables
-              : JSON.stringify(data.variables, null, 2)
-            : "";
-          const formattedHeaders = data.headers
-            ? typeof data.headers === "string"
-              ? data.headers
-              : JSON.stringify(data.headers, null, 2)
-            : "";
-
-          setLatestIncoming({
-            query: formattedQuery,
-            variables: formattedVars,
-            headers: formattedHeaders,
-          });
+              setLatestIncoming({
+                query: formattedQuery,
+                variables: formattedVars,
+                headers: formattedHeaders,
+              });
+            }
+          }
         } catch (e) {
           console.error("Failed to parse SSE event:", e);
         }
@@ -241,8 +248,9 @@ export default function App() {
   }, [url, activeUrl]);
 
   const fetcher = useMemo(() => {
+    // console.log(`[FETCHER RECREATED] Active URL: ${activeUrl}, schemaKey: ${schemaKey}`);
+
     return async (graphQLParams: any, opts?: any) => {
-      // Guard against sending empty queries to the server (e.g. during new tab creation)
       if (!graphQLParams?.query || !graphQLParams.query.trim()) {
         return { data: null };
       }
@@ -262,6 +270,7 @@ export default function App() {
             headers: {
               "Content-Type": "application/json",
               "x-target-endpoint": target,
+              "x-schema-version": String(schemaKey),
               ...(opts?.headers || {}),
             },
             body: JSON.stringify(graphQLParams),
@@ -282,7 +291,7 @@ export default function App() {
         }
       }
     };
-  }, [activeUrl, url]);
+  }, [activeUrl, url, schemaKey]);
 
   return (
     <div style={{ width: "100vw", height: "100vh", display: "flex", flexDirection: "column" }}>
@@ -343,7 +352,7 @@ export default function App() {
         className="graphiql-wrapper"
         style={{ flex: 1, height: "100%", minHeight: 0, position: "relative", overflow: "hidden" }}
       >
-        {activeUrl ? (
+        {activeUrl && !isReloading ? (
           <GraphiQL
             key={`${activeUrl}-${schemaKey}`}
             fetcher={fetcher}
@@ -364,7 +373,9 @@ export default function App() {
               fontSize: "14px",
             }}
           >
-            {isSyncing
+            {isReloading
+              ? "Reloading GraphQL Schema..."
+              : isSyncing
               ? "Connecting to endpoint & fetching schema..."
               : errorMessage
               ? "Fix the endpoint URL above to continue."

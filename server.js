@@ -42,7 +42,7 @@ let childProcess = null;
 
 const sseClients = new Set();
 
-function broadcastQueryToUI(payloadData) {
+function broadcastToUI(payloadData) { console.log(`[Bridge] Broadcasting to UI:`, payloadData);
   if (!payloadData) return;
 
   if (payloadData.endpoint && isValidUrl(payloadData.endpoint)) {
@@ -87,76 +87,78 @@ function filterAndWrite(data, targetStream) {
   }
 }
 
-function startBridge(endpoint, headersInput) {
-  return new Promise((resolve, reject) => {
-    const rawHeaders = parseHeaders((headersInput !== undefined && headersInput !== null) ? headersInput : currentHeaders);
-    const targetEndpoint = (endpoint && isValidUrl(endpoint)) ? endpoint : process.env.ENDPOINT;
+async function startBridge(endpoint, headersInput) {
+  console.log(`[Bridge] Starting bridge for endpoint: ${endpoint || currentEndpoint}`);
 
-    if (!targetEndpoint) {
-      console.log(`[Bridge] No valid endpoint provided. Bridge spawn deferred.`);
-      return resolve();
-    }
+  const rawHeaders = parseHeaders((headersInput !== undefined && headersInput !== null) ? headersInput : currentHeaders);
+  const targetEndpoint = (endpoint && isValidUrl(endpoint)) ? endpoint : process.env.ENDPOINT;
 
-    const childEnv = Object.assign({}, process.env, {
-      ENABLE_HTTP: 'true',
-      ALLOW_MUTATIONS: 'true',
-      ENDPOINT: targetEndpoint,
-      HEADERS: rawHeaders,
-      MCP_PORT: String(INTERNAL_BRIDGE_PORT)
-    });
+  if (!targetEndpoint) {
+    console.log(`[Bridge] No valid endpoint provided. Bridge spawn deferred.`);
+    return;
+  }
 
-    currentEndpoint = targetEndpoint;
-    currentHeaders = rawHeaders;
+  const childEnv = Object.assign({}, process.env, {
+    ENABLE_HTTP: 'true',
+    ALLOW_MUTATIONS: 'true',
+    ENDPOINT: targetEndpoint,
+    HEADERS: rawHeaders,
+    MCP_PORT: String(INTERNAL_BRIDGE_PORT)
+  });
 
-    if (childProcess) {
-      childProcess.kill('SIGTERM');
-    }
+  currentEndpoint = targetEndpoint;
+  currentHeaders = rawHeaders;
 
-    console.log(`[Bridge] Initializing MCP engine for: ${targetEndpoint}`);
+  if (childProcess) {
+    console.log(`[Bridge] Killing existing child process...`);
+    childProcess.removeAllListeners();
+    childProcess.kill('SIGKILL');
+    childProcess = null;
+    await new Promise((r) => setTimeout(r, 250));
+  }
 
-    const child = fork(mcpIndexPath, [], {
-      env: childEnv,
-      silent: true
-    });
+  console.log(`[Bridge] Initializing MCP engine for: ${targetEndpoint}`);
 
-    childProcess = child;
+  const child = fork(mcpIndexPath, [], {
+    env: childEnv,
+    silent: true
+  });
 
-    child.stdout.on('data', (data) => filterAndWrite(data, process.stdout));
-    child.stderr.on('data', (data) => filterAndWrite(data, process.stderr));
+  childProcess = child;
 
-    child.on('message', async (msg) => {
-      if (msg && msg.type === 'MCP_TOOL_CALL') {
-        const targetUrl = msg.args?.endpoint || currentEndpoint;
-        const targetHeaders = msg.args?.headers || currentHeaders;
+  child.stdout.on('data', (data) => filterAndWrite(data, process.stdout));
+  child.stderr.on('data', (data) => filterAndWrite(data, process.stderr));
 
-        if (msg.args?.endpoint && msg.args.endpoint !== currentEndpoint) {
-          await startBridge(targetUrl, targetHeaders);
-        }
+  child.on('message', async (msg) => {
+    console.log(`[Bridge] Received message:`, msg);
+    if (msg && msg.type === 'MCP_TOOL_CALL') {
+      const targetUrl = msg.args?.endpoint || currentEndpoint;
+      const targetHeaders = msg.args?.headers || currentHeaders;
 
-        // Relay to UI only if a query was passed in the tool call arguments
-        if (msg.args?.query) {
-          const eventPayload = {
-            type: 'SYNC_ALL',
-            endpoint: targetUrl,
-            headers: typeof targetHeaders === 'string' ? JSON.parse(targetHeaders) : targetHeaders,
-            query: msg.args.query,
-            variables: msg.args.variables ?? {}
-          };
-          broadcastQueryToUI(eventPayload);
-        }
+      if (msg.args?.endpoint && msg.args.endpoint !== currentEndpoint) {
+        await startBridge(targetUrl, targetHeaders);
       }
-    });
 
-    child.once('error', reject);
+      if (msg.args?.query) {
+        const eventPayload = {
+          type: 'SYNC_ALL',
+          endpoint: targetUrl,
+          headers: typeof targetHeaders === 'string' ? JSON.parse(targetHeaders) : targetHeaders,
+          query: msg.args.query,
+          variables: msg.args.variables ?? {}
+        };
+        broadcastToUI(eventPayload);
+      }
+    }
+  });
 
-    // Initial SSE emit upon bridge start
-    broadcastQueryToUI({
-      type: 'SYNC_ALL',
-      endpoint: currentEndpoint,
-      headers: currentHeaders ? JSON.parse(currentHeaders) : {}
-    });
+  // Wait briefly for the bridge to bind port 6279
+  await new Promise((r) => setTimeout(r, 300));
 
-    process.nextTick(resolve);
+  broadcastToUI({
+    type: 'SYNC_ALL',
+    endpoint: currentEndpoint,
+    headers: currentHeaders ? JSON.parse(currentHeaders) : {}
   });
 }
 
@@ -205,6 +207,24 @@ const server = http.createServer(async (req, res) => {
       defaultHeaders: currentHeaders ? JSON.parse(currentHeaders) : {},
       bridgeUrl: `http://localhost:${PUBLIC_PORT}/graphiql`
     }));
+  }
+
+  if (req.method === 'POST' && req.url === '/api/schema-updated') {
+    console.log(`[Bridge] Webhook /api/schema-updated triggered. Reloading MCP engine and notifying UI...`);
+    try {
+      await startBridge(currentEndpoint, currentHeaders);
+
+      broadcastToUI({
+        type: 'SCHEMA_UPDATED',
+        endpoint: currentEndpoint
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: true, message: 'Bridge reloaded and UI notified.' }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: err.message }));
+    }
   }
 
   if (req.method === 'POST' && req.url === '/api/switch-endpoint') {
@@ -315,17 +335,28 @@ const server = http.createServer(async (req, res) => {
           return res.end(JSON.stringify({ errors: [{ message: 'No valid target GraphQL endpoint.' }] }));
         }
 
+        // 1. Make a proxy request to the target backend bypassing cache
         const response = await fetch(targetUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store',
+            'Pragma': 'no-cache',
             ...(currentHeaders ? JSON.parse(currentHeaders) : {})
           },
+          cache: 'no-store', // <-- Force a fresh request in Node fetch
           body
         });
 
         const data = await response.text();
-        res.writeHead(response.status, { 'Content-Type': 'application/json' });
+
+        // 2. Prevent client/browser from caching the introspection response
+        res.writeHead(response.status, { 
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        });
         res.end(data);
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json' });

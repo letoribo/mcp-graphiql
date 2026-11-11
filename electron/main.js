@@ -46,7 +46,7 @@ function getMimeType(filePath) {
 }
 
 // Handler for IPC messages from the server to relay to the UI
-function handleServerMessage(msg) {
+function handleServerMessage(msg) { console.log(`IPC message:`, msg);
   if (msg?.type === "MCP_TOOL_CALL" && msg.toolName === "query-graphql") {
     const rawQuery = msg.args?.query;
 

@@ -42,7 +42,8 @@ let childProcess = null;
 
 const sseClients = new Set();
 
-function broadcastToUI(payloadData) { console.log(`[Bridge] Broadcasting to UI:`, payloadData);
+function broadcastToUI(payloadData) {
+  console.log(`[Bridge] Broadcasting to UI:`, payloadData);
   if (!payloadData) return;
 
   if (payloadData.endpoint && isValidUrl(payloadData.endpoint)) {
@@ -152,7 +153,6 @@ async function startBridge(endpoint, headersInput) {
     }
   });
 
-  // Wait briefly for the bridge to bind port 6279
   await new Promise((r) => setTimeout(r, 300));
 
   broadcastToUI({
@@ -258,8 +258,21 @@ const server = http.createServer(async (req, res) => {
         let payload = {};
         try { payload = JSON.parse(rawBody); } catch (e) {}
 
-        const reqEndpoint = payload?.params?.arguments?.endpoint;
-        const reqHeaders = payload?.params?.arguments?.headers;
+        const reqEndpoint = payload?.params?.arguments?.endpoint || payload?.endpoint;
+        const reqHeaders = payload?.params?.arguments?.headers || payload?.headers;
+        const reqQuery = payload?.params?.arguments?.query || payload?.query || payload?.params?.query;
+        const reqVariables = payload?.params?.arguments?.variables || payload?.variables || {};
+
+        console.log("[Server /mcp] Extracted query from curl/MCP:", reqQuery);
+
+        if (reqQuery && !reqQuery.includes('__schema')) {
+          broadcastToUI({
+            type: 'SYNC_ALL',
+            query: reqQuery,
+            variables: reqVariables
+          });
+        }
+
         const parsedReqHeaders = reqHeaders ? parseHeaders(reqHeaders) : currentHeaders;
 
         const isEndpointChanged = reqEndpoint && isValidUrl(reqEndpoint) && reqEndpoint !== currentEndpoint;
@@ -335,7 +348,6 @@ const server = http.createServer(async (req, res) => {
           return res.end(JSON.stringify({ errors: [{ message: 'No valid target GraphQL endpoint.' }] }));
         }
 
-        // 1. Make a proxy request to the target backend bypassing cache
         const response = await fetch(targetUrl, {
           method: 'POST',
           headers: {
@@ -344,13 +356,12 @@ const server = http.createServer(async (req, res) => {
             'Pragma': 'no-cache',
             ...(currentHeaders ? JSON.parse(currentHeaders) : {})
           },
-          cache: 'no-store', // <-- Force a fresh request in Node fetch
+          cache: 'no-store',
           body
         });
 
         const data = await response.text();
 
-        // 2. Prevent client/browser from caching the introspection response
         res.writeHead(response.status, { 
           'Content-Type': 'application/json',
           'Cache-Control': 'no-cache, no-store, must-revalidate',

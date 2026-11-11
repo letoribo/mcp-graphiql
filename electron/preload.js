@@ -7,7 +7,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   readClipboard: () => ipcRenderer.invoke("read-clipboard"),
   
   on: (channel, callback) => {
-    const subscription = (event, ...args) => callback(...args);
+    const subscription = (event, ...args) => {
+      console.log(`[IPC PRELOAD] Received on channel '${channel}':`, args[0]);
+      callback(...args);
+    };
     ipcRenderer.on(channel, subscription);
 
     // Store references for local debugging

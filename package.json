@@ -48,9 +48,10 @@
     }
   },
   "dependencies": {
-    "@letoribo/mcp-graphql-enhanced": "^4.15.3",
-    "@modelcontextprotocol/sdk": "^1.30.0",
-    "graphiql": "^5.2.4",
+    "@letoribo/mcp-graphql-enhanced": "^4.17.1",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "graphiql": "^6.0.1",
+    "graphql": "^16.15.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

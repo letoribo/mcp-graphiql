@@ -1,18 +1,18 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useOperationsEditorState } from '@graphiql/react';
 import { GraphiQL } from "graphiql";
-import { useEditorContext } from "@graphiql/react";
 import { parse, print } from "graphql";
-import "@graphiql/react/style.css";
-import "graphiql/graphiql.css";
+import "graphiql/style.css";
 import "./App.css";
 
+// Prevent unhandled cancellations from crashing the app
 window.addEventListener("unhandledrejection", (event) => {
   if (event.reason === "Canceled" || event.reason?.message === "Canceled") {
     event.preventDefault();
   }
 });
 
-function isValidHttpUrl(string: string) {
+function isValidHttpUrl(string: string): boolean {
   try {
     const url = new URL(string);
     return url.protocol === "http:" || url.protocol === "https:";
@@ -30,49 +30,34 @@ function formatGraphQLQuery(queryStr: string): string {
   }
 }
 
-interface IncomingTab {
-  query: string;
-  variables: string;
-  headers: string;
-}
-
-function EditorBridge({ incomingQuery }: { incomingQuery: IncomingTab | null }) {
-  const editorCtx = useEditorContext();
-  const processedRef = useRef<IncomingTab | null>(null);
+// Bridge component that programmatically opens a new tab or syncs query into active tab
+function ActiveTabQueryUpdater({ query }: { query: string }) {
+  const [, setQuery] = useOperationsEditorState();
+  const lastQueryRef = useRef<string>("");
 
   useEffect(() => {
-    if (!editorCtx || !incomingQuery || processedRef.current === incomingQuery) return;
+    if (!query || query === lastQueryRef.current) return;
+    lastQueryRef.current = query;
 
-    let retries = 0;
-    const interval = setInterval(() => {
-      retries++;
-      if (editorCtx.queryEditor || retries > 20) {
-        clearInterval(interval);
-        if (!editorCtx.queryEditor) return;
+    console.log("[ActiveTabQueryUpdater] Processing incoming query:", query);
 
-        const currentVal = editorCtx.queryEditor.getValue() || "";
+    // Try to find and click the GraphiQL native "Add Tab" button (+) to open a fresh tab for each curl request
+    const addTabButton = document.querySelector('.graphiql-tab-add, button[aria-label="New tab"], .graphiql-workspace-tab-add') as HTMLButtonElement;
+    if (addTabButton) {
+      addTabButton.click();
+    }
 
-        if (!currentVal.trim()) {
-          processedRef.current = incomingQuery;
-          editorCtx.queryEditor.setValue(incomingQuery.query);
-          if (editorCtx.variableEditor) editorCtx.variableEditor.setValue(incomingQuery.variables);
-          if (editorCtx.headerEditor) editorCtx.headerEditor.setValue(incomingQuery.headers);
-        } else if (typeof editorCtx.addTab === "function") {
-          editorCtx.addTab();
-          setTimeout(() => {
-            if (editorCtx.queryEditor) {
-              editorCtx.queryEditor.setValue(incomingQuery.query);
-              if (editorCtx.variableEditor) editorCtx.variableEditor.setValue(incomingQuery.variables);
-              if (editorCtx.headerEditor) editorCtx.headerEditor.setValue(incomingQuery.headers);
-              processedRef.current = incomingQuery;
-            }
-          }, 100);
+    // Short timeout to let the new tab mount its editor instance, then set the query
+    setTimeout(() => {
+      try {
+        if (typeof setQuery === 'function') {
+          setQuery(query);
         }
+      } catch (err) {
+        console.warn("[ActiveTabQueryUpdater] Could not update editor state:", err);
       }
-    }, 50);
-
-    return () => clearInterval(interval);
-  }, [editorCtx, incomingQuery]);
+    }, 60);
+  }, [query, setQuery]);
 
   return null;
 }
@@ -83,12 +68,12 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [schemaKey, setSchemaKey] = useState<number>(0);
-  const [isReloading, setIsReloading] = useState<boolean>(false);
   const [isConfigLoaded, setIsConfigLoaded] = useState<boolean>(false);
+  const [query, setQuery] = useState<string>("");
 
-  const [latestIncoming, setLatestIncoming] = useState<IncomingTab | null>(null);
   const isServerInitiated = useRef(false);
 
+  // Clear stale GraphiQL local storage cache on mount
   useEffect(() => {
     try {
       Object.keys(localStorage).forEach((key) => {
@@ -99,82 +84,52 @@ export default function App() {
     } catch {}
   }, []);
 
+  // SSE client listener for backend query broadcasts (curl / MCP)
   useEffect(() => {
-    let eventSource: EventSource | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    const eventSource = new EventSource("http://localhost:6274/api/stream");
 
-    const connect = () => {
-      if (eventSource) eventSource.close();
-
-      eventSource = new EventSource("http://localhost:6274/api/stream");
-
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-
-          if (data.type === "SCHEMA_UPDATED" || data.type === "MCP_SCHEMA_EVOLVED") {
-            setIsReloading(true);
-            setSchemaKey((prev) => prev + 1);
-            setTimeout(() => {
-              setIsReloading(false);
-            }, 50);
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        const rawQuery = data?.query;
+        if (rawQuery) {
+          const formattedQuery = formatGraphQLQuery(rawQuery);
+          if (formattedQuery.trim()) {
+            setQuery(formattedQuery);
           }
-
-          if (data.endpoint) {
-            isServerInitiated.current = true;
-            setUrl(data.endpoint);
-            setActiveUrl(data.endpoint);
-            setIsSyncing(false);
-          }
-
-          if (data.query) {
-            const formattedQuery = formatGraphQLQuery(data.query);
-            if (formattedQuery.trim()) {
-              const formattedVars = data.variables
-                ? typeof data.variables === "string"
-                  ? data.variables
-                  : JSON.stringify(data.variables, null, 2)
-                : "";
-              const formattedHeaders = data.headers
-                ? typeof data.headers === "string"
-                  ? data.headers
-                  : JSON.stringify(data.headers, null, 2)
-                : "";
-
-              setLatestIncoming({
-                query: formattedQuery,
-                variables: formattedVars,
-                headers: formattedHeaders,
-              });
-            }
-          }
-        } catch (e) {
-          console.error("Failed to parse SSE event:", e);
         }
-      };
-
-      eventSource.onerror = () => {
-        if (eventSource) {
-          eventSource.close();
-          eventSource = null;
-        }
-        if (!reconnectTimer) {
-          reconnectTimer = setTimeout(() => {
-            reconnectTimer = null;
-            connect();
-          }, 1000);
-        }
-      };
+      } catch (err) {
+        console.error("[SSE] Failed to parse event data:", err);
+      }
     };
 
-    connect();
-
     return () => {
-      if (eventSource) eventSource.close();
-      if (reconnectTimer) clearTimeout(reconnectTimer);
+      eventSource.close();
     };
   }, []);
 
+  // Fallback Electron IPC listener
+  useEffect(() => {
+    const win = window as any;
+    if (win.electronAPI && typeof win.electronAPI.on === "function") {
+      const unsubscribe = win.electronAPI.on("mcp:set-query", (...args: any[]) => {
+        const data = args[0];
+        const rawQuery = data?.query || data?.args?.query;
+        if (rawQuery) {
+          const formattedQuery = formatGraphQLQuery(rawQuery);
+          if (formattedQuery.trim()) {
+            setQuery(formattedQuery);
+          }
+        }
+      });
+
+      return () => {
+        unsubscribe();
+      };
+    }
+  }, []);
+
+  // Initialize endpoint from query params or config server
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlParam = params.get("endpoint") || params.get("url");
@@ -198,6 +153,7 @@ export default function App() {
       .finally(() => setIsConfigLoaded(true));
   }, []);
 
+  // Handle endpoint switching with debounce
   useEffect(() => {
     if (!url) {
       setErrorMessage("");
@@ -247,9 +203,8 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [url, activeUrl]);
 
+  // Custom GraphQL fetcher routing through local proxy
   const fetcher = useMemo(() => {
-    // console.log(`[FETCHER RECREATED] Active URL: ${activeUrl}, schemaKey: ${schemaKey}`);
-
     return async (graphQLParams: any, opts?: any) => {
       if (!graphQLParams?.query || !graphQLParams.query.trim()) {
         return { data: null };
@@ -295,6 +250,7 @@ export default function App() {
 
   return (
     <div style={{ width: "100vw", height: "100vh", display: "flex", flexDirection: "column" }}>
+      {/* Top endpoint toolbar */}
       <div
         style={{
           display: "flex",
@@ -349,17 +305,15 @@ export default function App() {
       )}
 
       <div
-        className="graphiql-wrapper"
+        className="graphiql-container theme-dark graphiql-wrapper"
         style={{ flex: 1, height: "100%", minHeight: 0, position: "relative", overflow: "hidden" }}
       >
-        {activeUrl && !isReloading ? (
+        {activeUrl ? (
           <GraphiQL
             key={`${activeUrl}-${schemaKey}`}
             fetcher={fetcher}
-            defaultTheme="dark"
-            defaultQuery=""
           >
-            <EditorBridge incomingQuery={latestIncoming} />
+            <ActiveTabQueryUpdater query={query} />
           </GraphiQL>
         ) : (
           <div
@@ -373,9 +327,7 @@ export default function App() {
               fontSize: "14px",
             }}
           >
-            {isReloading
-              ? "Reloading GraphQL Schema..."
-              : isSyncing
+            {isSyncing
               ? "Connecting to endpoint & fetching schema..."
               : errorMessage
               ? "Fix the endpoint URL above to continue."

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useOperationsEditorState } from '@graphiql/react';
+import { createTransport } from "@graphiql/toolkit";
 import { GraphiQL } from "graphiql";
 import { parse, print } from "graphql";
 import "graphiql/style.css";
@@ -203,49 +204,83 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [url, activeUrl]);
 
-  // Custom GraphQL fetcher routing through local proxy
-  const fetcher = useMemo(() => {
-    return async (graphQLParams: any, opts?: any) => {
-      if (!graphQLParams?.query || !graphQLParams.query.trim()) {
-        return { data: null };
-      }
+  // GraphQL v6 Transport routing through local proxy while exposing target endpoint URL
+  const transport = useMemo(() => {
+    const target = activeUrl?.trim() || url?.trim();
+    const proxyEndpoint = "http://localhost:6274/graphql";
 
-      const target = activeUrl?.trim() || url?.trim();
+    const customFetch: typeof fetch = async (_input, init) => {
+      let bodyObj: any = {};
+      try {
+        if (typeof init?.body === "string") {
+          bodyObj = JSON.parse(init.body);
+        }
+      } catch {}
+
+      if (!bodyObj?.query || !bodyObj.query.trim()) {
+        return new Response(JSON.stringify({ data: null }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
 
       if (!target || target.includes("localhost:6274") || target.includes("127.0.0.1:6274")) {
-        return { data: null };
+        return new Response(JSON.stringify({ data: null }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }
-
-      const proxyEndpoint = "http://localhost:6274/graphql";
 
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
           const res = await fetch(proxyEndpoint, {
             method: "POST",
             headers: {
+              ...(init?.headers as Record<string, string> || {}),
               "Content-Type": "application/json",
               "x-target-endpoint": target,
               "x-schema-version": String(schemaKey),
-              ...(opts?.headers || {}),
             },
-            body: JSON.stringify(graphQLParams),
+            body: init?.body,
+            signal: init?.signal,
           });
 
           const text = await res.text();
           try {
-            return JSON.parse(text);
+            JSON.parse(text);
+            return new Response(text, {
+              status: res.status,
+              headers: { "Content-Type": "application/json" },
+            });
           } catch {
-            return { errors: [{ message: text || `Status: ${res.status}` }] };
+            return new Response(
+              JSON.stringify({ errors: [{ message: text || `Status: ${res.status}` }] }),
+              { status: 200, headers: { "Content-Type": "application/json" } }
+            );
           }
         } catch (err: any) {
+          if (err?.name === "AbortError") throw err;
           if (attempt < 3) {
             await new Promise((r) => setTimeout(r, 400));
             continue;
           }
-          return { errors: [{ message: err?.message || "Bridge offline or syncing..." }] };
+          return new Response(
+            JSON.stringify({ errors: [{ message: err?.message || "Bridge offline or syncing..." }] }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          );
         }
       }
+
+      return new Response(JSON.stringify({ data: null }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
     };
+
+    return createTransport({
+      url: target || proxyEndpoint,
+      fetch: customFetch,
+    });
   }, [activeUrl, url, schemaKey]);
 
   return (
@@ -311,7 +346,7 @@ export default function App() {
         {activeUrl ? (
           <GraphiQL
             key={`${activeUrl}-${schemaKey}`}
-            fetcher={fetcher}
+            transport={transport}
           >
             <ActiveTabQueryUpdater query={query} />
           </GraphiQL>

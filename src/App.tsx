@@ -285,45 +285,6 @@ export default function App() {
 
   return (
     <div style={{ width: "100vw", height: "100vh", display: "flex", flexDirection: "column" }}>
-      {/* Top endpoint toolbar */}
-      <div
-        style={{
-          display: "flex",
-          padding: "6px 12px",
-          background: "#1e1e2e",
-          borderBottom: "1px solid #45475a",
-          alignItems: "center",
-          gap: "8px",
-        }}
-      >
-        <span style={{ color: "#cdd6f4", fontSize: "12px", fontWeight: "bold" }}>Endpoint:</span>
-        <input
-          type="text"
-          value={url}
-          onChange={(e) => {
-            isServerInitiated.current = false;
-            setUrl(e.target.value);
-          }}
-          placeholder={isConfigLoaded ? "Paste GraphQL endpoint URL..." : "Loading config..."}
-          style={{
-            flex: 1,
-            padding: "4px 8px",
-            background: "#11111b",
-            color: "#cdd6f4",
-            border: `1px solid ${errorMessage ? "#f38ba8" : "#45475a"}`,
-            borderRadius: "4px",
-            fontSize: "12px",
-            fontFamily: "monospace",
-            outline: "none",
-          }}
-        />
-        {isSyncing && (
-          <span style={{ color: "#f9e2af", fontSize: "11px", fontFamily: "monospace" }}>
-            Syncing schema...
-          </span>
-        )}
-      </div>
-
       {errorMessage && (
         <div
           style={{

@@ -16,10 +16,19 @@ function parseHeaders(headersInput) {
 }
 
 function isValidUrl(urlStr) {
-  try {
-    const parsed = new URL(urlStr);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  } catch { return false; }
+  if (!urlStr || typeof urlStr !== 'string') return false;
+  // Якщо передано кілька URL через кому (мульти-ендпоинт / федерація)
+  const urls = urlStr.split(',').map(s => s.trim()).filter(Boolean);
+  if (urls.length === 0) return false;
+  
+  return urls.every(u => {
+    try {
+      const parsed = new URL(u);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch { 
+      return false; 
+    }
+  });
 }
 
 function getMcpIndexPath() {
@@ -348,7 +357,11 @@ const server = http.createServer(async (req, res) => {
           return res.end(JSON.stringify({ errors: [{ message: 'No valid target GraphQL endpoint.' }] }));
         }
 
-        const response = await fetch(targetUrl, {
+        // Если это мульти-эндпоинт (содержит запятую), шлем запрос на локальный MCP-движок федерэйшена
+        const isMulti = targetUrl.includes(',');
+        const fetchDestination = isMulti ? `http://127.0.0.1:${INTERNAL_BRIDGE_PORT}/graphql` : targetUrl;
+
+        const response = await fetch(fetchDestination, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
